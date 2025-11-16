@@ -7,7 +7,6 @@ type PotentialParticle = { x: number; y: number; color: string };
 
 //
 // --- MODIFIED Particle Class ---
-// (Simplified to remove circle-specific logic)
 //
 class Particle {
   // --- Configuration Variables ---
@@ -36,44 +35,36 @@ class Particle {
     canvasHeight: number
   ) {
     this.imageTargets = imageTargets;
-    this.color = this.imageTargets[0].color;
+    // FIX 1 (Line 39): Use optional chaining and a fallback color
+    this.color = this.imageTargets[0]?.color || "white";
     this.targetX = 0;
     this.targetY = 0;
-    this.x = Math.random() * canvasWidth; // Start at a random X
-    this.y = Math.random() * canvasHeight; // Start at a random Y
+    this.x = Math.random() * canvasWidth;
+    this.y = Math.random() * canvasHeight;
     this.speed = Math.random() * 0.05 + Particle.easeFactor;
 
-    // All particles get a random walk velocity
     this.vx = (Math.random() - 0.5) * Particle.swirlRandomWalkSpeed;
     this.vy = (Math.random() - 0.5) * Particle.swirlRandomWalkSpeed;
   }
 
-  // initSwirlPosition is no longer needed, it's in the constructor
-
+  // FIX 2 (Lines 54, 55, 56): Removed unused parameters
   update(
-    centerX: number,
-    centerY: number,
-    time: number,
     canvasWidth: number,
     canvasHeight: number,
     animationState: ParticleAnimationState
   ): void {
     if (animationState === "swirling") {
-      // --- This is the new "swirling" logic: a random walk that wraps ---
       this.x += this.vx;
       this.y += this.vy;
 
-      // Wrap around the canvas edges
       if (this.x > canvasWidth) this.x = 0;
       if (this.x < 0) this.x = canvasWidth;
       if (this.y > canvasHeight) this.y = 0;
       if (this.y < 0) this.y = canvasHeight;
 
-      // Add a small random change to velocity
       this.vx += (Math.random() - 0.5) * 0.1;
       this.vy += (Math.random() - 0.5) * 0.1;
 
-      // Clamp velocity
       this.vx = Math.max(
         -Particle.swirlRandomWalkSpeed,
         Math.min(Particle.swirlRandomWalkSpeed, this.vx)
@@ -83,7 +74,6 @@ class Particle {
         Math.min(Particle.swirlRandomWalkSpeed, this.vy)
       );
     } else {
-      // --- This is the morphing-to-image logic (unchanged) ---
       const target = this.imageTargets[animationState];
       if (target) {
         this.targetX = target.x;
@@ -111,56 +101,9 @@ let particlesArray: Particle[] = [];
 let animationFrameId: number | null = null;
 let animationState: ParticleAnimationState = "swirling";
 
-// --- Helper to load an image and get its data ---
-// (This function is now perfect, as it fits the image to the canvas)
-const loadImageData = (
-  src: string
-): Promise<{
-  imageData: ImageData;
-}> => {
-  return new Promise((resolve, reject) => {
-    const canvas = canvasRef.value;
-    if (!ctx || !canvas) return reject(new Error("Canvas not ready"));
+// --- FIX 3 (Lines 150-153): Removed the redundant loadImageData function ---
 
-    const image = new Image();
-    image.crossOrigin = "Anonymous";
-    image.src = src;
-
-    image.onload = () => {
-      // Calculate draw dimensions
-      const imgAspectRatio = image.width / image.height;
-      const canvasAspectRatio = canvas.width / canvas.height;
-      let dWidth, dHeight, dx, dy;
-
-      if (imgAspectRatio > canvasAspectRatio) {
-        // Image is wider than canvas
-        dWidth = canvas.width;
-        dHeight = dWidth / imgAspectRatio;
-        dx = 0;
-        dy = (canvas.height - dHeight) / 2;
-      } else {
-        // Image is taller than canvas
-        dHeight = canvas.height;
-        dWidth = dHeight * imgAspectRatio;
-        dy = 0;
-        dx = (canvas.width - dWidth) / 2;
-      }
-
-      // Get image data
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(image, dx, dy, dWidth, dHeight);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      resolve({ imageData });
-    };
-    image.onerror = () => {
-      reject(new Error(`Failed to load image: ${src}`));
-    };
-  });
-};
-
-// --- Helper to extract particles from image data (unchanged) ---
+// --- Helper to extract particles from image data ---
 const getPotentialParticles = (imageData: ImageData): PotentialParticle[] => {
   const particles: PotentialParticle[] = [];
   const data = imageData.data;
@@ -174,6 +117,17 @@ const getPotentialParticles = (imageData: ImageData): PotentialParticle[] => {
       const g = data[index + 1];
       const b = data[index + 2];
       const a = data[index + 3];
+
+      // FIX 4 (Lines 178, 180): Add guard for undefined pixel data
+      if (
+        r === undefined ||
+        g === undefined ||
+        b === undefined ||
+        a === undefined
+      ) {
+        continue;
+      }
+
       const color = `rgb(${r},${g},${b})`;
       const brightness = (r + g + b) / 3;
 
@@ -198,51 +152,39 @@ const initParticles = (potentialParticles: PotentialParticle[]) => {
 
   for (let i = 0; i < maxParticles; i++) {
     const pData = potentialParticles[i];
+
+    // FIX 5 (Line 201): Add guard for pData
+    if (!pData) continue;
+
     const imageTargets = [{ x: pData.x, y: pData.y, color: pData.color }];
 
-    // We no longer need 'type'
     const particle = new Particle(imageTargets, canvas.width, canvas.height);
 
-    // We no longer need initSwirlPosition
     particlesArray.push(particle);
   }
 };
 
 // --- MODIFIED: Animation Loop ---
-const animate = (time: number) => {
+const animate = (_time: number) => {
   const canvas = canvasRef.value;
   if (!ctx || !canvas) return;
-
-  const centerX = canvas.width / 2;
-  const centerY = canvas.height / 2;
-
-  // --- REMOVED Cipping Logic ---
-  // ctx.save();
-  // ctx.beginPath();
-  // ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-  // ctx.closePath();
-  // ctx.clip();
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   for (let i = 0; i < particlesArray.length; i++) {
     const particle = particlesArray[i];
-    particle.update(
-      centerX,
-      centerY,
-      time,
-      canvas.width,
-      canvas.height,
-      animationState
-    );
+
+    // FIX 6 (Lines 230, 238): Add guard for particle
+    if (!particle) continue;
+
+    // FIX 7 (Line 230): Update call signature
+    particle.update(canvas.width, canvas.height, animationState);
     particle.draw(ctx);
   }
-  // ctx.restore(); // No longer needed
   animationFrameId = requestAnimationFrame(animate);
 };
 
 // --- Main setup/resize function ---
-// This now only sets up the INITIAL square canvas
 const setupCanvas = () => {
   const canvas = canvasRef.value;
   if (!canvas) return;
@@ -283,7 +225,6 @@ const handleFileChange = async (event: Event) => {
   const canvas = canvasRef.value;
   if (!file || !canvas) return;
 
-  // Set state to swirling
   animationState = "swirling";
 
   if (animationFrameId) {
@@ -292,47 +233,61 @@ const handleFileChange = async (event: Event) => {
   }
 
   const imageUrl = URL.createObjectURL(file);
-
-  // --- Step 1: Load image to get its dimensions ---
   const image = new Image();
   image.src = imageUrl;
 
   image.onload = async () => {
     try {
-      // --- Step 2: Calculate new canvas size based on image aspect ratio ---
+      // --- Step 2: Calculate new canvas size ---
       const dpr = window.devicePixelRatio || 1;
       const imgAspectRatio = image.width / image.height;
       const maxWidth = Particle.maxCanvasWidth;
-
-      // Calculate new CSS dimensions
       const finalCssWidth = maxWidth;
       const finalCssHeight = finalCssWidth / imgAspectRatio;
-
-      // Calculate new bitmap dimensions
       const finalBitmapWidth = finalCssWidth * dpr;
       const finalBitmapHeight = finalCssHeight * dpr;
 
       // --- Step 3: Resize the canvas ---
-      console.log(`Resizing canvas to: ${finalCssWidth} x ${finalCssHeight}`);
       canvas.width = finalBitmapWidth;
       canvas.height = finalBitmapHeight;
       canvas.style.width = `${finalCssWidth}px`;
       canvas.style.height = `${finalCssHeight}px`;
       canvas.style.aspectRatio = `${finalCssWidth} / ${finalCssHeight}`;
 
-      // Re-get the context as it's lost on resize
+      // --- Step 4: Get context (and check it) ---
       ctx = canvas.getContext("2d", { willReadFrequently: true });
+      // This check ensures 'ctx' is not null for the lines below
       if (!ctx) throw new Error("Could not get 2D context after resize");
 
-      // --- Step 4: Now, load image data from the correctly sized canvas ---
-      console.log("Loading image data...");
-      // We pass image.src because imageUrl might be revoked by the time it's used
-      const { imageData } = await loadImageData(image.src);
+      // --- Step 5: Get Image Data (Logic moved from loadImageData) ---
+      // FIX 8 (Lines 150-153): 'ctx' is now guaranteed to be non-null
+      const canvasAspectRatio = canvas.width / canvas.height;
+      let dWidth, dHeight, dx, dy;
+
+      if (imgAspectRatio > canvasAspectRatio) {
+        dWidth = canvas.width;
+        dHeight = dWidth / imgAspectRatio;
+        dx = 0;
+        dy = (canvas.height - dHeight) / 2;
+      } else {
+        dHeight = canvas.height;
+        dWidth = dHeight * imgAspectRatio;
+        dy = 0;
+        dx = (canvas.width - dWidth) / 2;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, dx, dy, dWidth, dHeight);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       URL.revokeObjectURL(imageUrl); // Clean up memory
 
+      // --- Step 6: Initialize particles ---
       console.log("Initializing particles...");
       initParticles(getPotentialParticles(imageData));
 
+      // --- Step 7: Start animation ---
       console.log("Starting animation...");
       animate(0);
 
@@ -362,15 +317,15 @@ const handleFileChange = async (event: Event) => {
   };
 };
 
-// --- Handler for upload button click (unchanged) ---
+// --- Handler for upload button click ---
 const handleUploadClick = () => {
   fileInputRef.value?.click();
 };
 
-// --- Lifecycle Hooks (unchanged) ---
+// --- Lifecycle Hooks ---
 onMounted(() => {
-  setupCanvas(); // Initial canvas setup
-  window.addEventListener("resize", setupCanvas); // Resets to square on window resize
+  setupCanvas();
+  window.addEventListener("resize", setupCanvas);
 });
 
 onUnmounted(() => {
@@ -395,7 +350,6 @@ onUnmounted(() => {
         style="display: none"
       />
     </div>
-
     <div>
       <canvas ref="canvasRef" />
     </div>
